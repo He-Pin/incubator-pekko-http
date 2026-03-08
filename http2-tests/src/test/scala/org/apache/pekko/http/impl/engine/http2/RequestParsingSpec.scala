@@ -118,14 +118,14 @@ class RequestParsingSpec extends PekkoSpecWithMaterializer with Inside with Insp
       // appear in requests.
 
       "not accept response pseudo-header fields in a request" in {
-        val info = parseExpectError(
+        val ex = parseExpectProtocolError(
           keyValuePairs = Vector(
             ":scheme" -> "https",
             ":method" -> "GET",
             ":path" -> "/",
             ":status" -> "200"
           ))
-        info.summary should
+        ex.getMessage should
         ===("Malformed request: Pseudo-header ':status' is for responses only; it cannot appear in a request")
       }
 
@@ -144,7 +144,9 @@ class RequestParsingSpec extends PekkoSpecWithMaterializer with Inside with Insp
           // Insert the Foo header so it occurs before at least one pseudo-header
           val (before, after) = pseudoHeaders.splitAt(insertPoint)
           val modified = before ++ Vector("Foo" -> "bar") ++ after
-          parseExpectError(modified)
+          val ex = parseExpectProtocolError(modified)
+          ex.getMessage should
+          ===(s"Malformed request: Pseudo-header field '${after.head._1}' must not appear after a regular header")
         }
       }
 
@@ -155,13 +157,14 @@ class RequestParsingSpec extends PekkoSpecWithMaterializer with Inside with Insp
 
       "not accept connection-specific headers" in {
         // Add Connection header to indicate that Foo is a connection-specific header
-        parseExpectError(Vector(
+        val ex = parseExpectProtocolError(Vector(
           ":method" -> "GET",
           ":scheme" -> "https",
           ":path" -> "/",
           "Connection" -> "foo",
           "Foo" -> "bar"
         ))
+        ex.getMessage should ===("Malformed request: Header 'Connection' must not be used with HTTP/2")
       }
 
       "not accept TE with other values than 'trailers'" in {
@@ -169,12 +172,14 @@ class RequestParsingSpec extends PekkoSpecWithMaterializer with Inside with Insp
         // The only exception to this is the TE header field, which MAY be
         // present in an HTTP/2 request; when it is, it MUST NOT contain any
         // value other than "trailers".
-        parseExpectError(Vector(
+        val ex = parseExpectProtocolError(Vector(
           ":method" -> "GET",
           ":scheme" -> "https",
           ":path" -> "/",
           "TE" -> "chunked"
         ))
+        ex.getMessage should
+        ===("Malformed request: Header 'TE' must not contain value other than 'trailers', value was 'chunked")
 
       }
 
@@ -467,12 +472,13 @@ class RequestParsingSpec extends PekkoSpecWithMaterializer with Inside with Insp
       "reject empty ':path' pseudo-headers for http and https" in {
         val schemes = Seq("http", "https")
         forAll(schemes) { (scheme: String) =>
-          parseExpectError(
+          val ex = parseExpectProtocolError(
             keyValuePairs = Vector(
               ":method" -> "POST",
               ":scheme" -> scheme,
               ":path" -> ""
             ))
+          ex.getMessage should ===("Malformed request: Pseudo-header ':path' must not be empty")
         }
       }
 
