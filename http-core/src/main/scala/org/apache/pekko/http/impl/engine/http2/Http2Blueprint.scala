@@ -284,12 +284,13 @@ private[http] object Http2Blueprint {
     // HttpHeaderParser is not thread safe and should not be called concurrently,
     // the internal trie, however, has built-in protection and will do copy-on-write
     val masterHttpHeaderParser = HttpHeaderParser(parserSettings, log)
-    BidiFlow.fromFlows(
-      Flow[HttpResponse].map(new ResponseRendering(settings, log, dateHeaderRendering)),
-      Flow[Http2SubStream].via(StreamUtils.statefulAttrsMap { attrs =>
-        val headerParser = masterHttpHeaderParser.createShallowCopy()
-        RequestParsing.parseRequest(headerParser, settings, attrs)
-      }))
+    RequestErrorFlow().atop(
+      BidiFlow.fromFlows(
+        Flow[HttpResponse].map(new ResponseRendering(settings, log, dateHeaderRendering)),
+        Flow[Http2SubStream].via(StreamUtils.statefulAttrsMap { attrs =>
+          val headerParser = masterHttpHeaderParser.createShallowCopy()
+          RequestParsing.parseRequest(headerParser, settings, attrs)
+        })))
   }
 
   /**
