@@ -789,6 +789,30 @@ Host: example.com
       Http().shutdownAllConnectionPools().futureValue
     }
 
+    "finish a plaintext HTTP/1.1 close-delimited response on server EOF" in Utils.assertAllStagesStopped {
+      val first = ByteString("first part, ")
+      val second = ByteString("second part")
+      val timeout = 5.seconds.dilated
+      val binding = Http().newServerAt("127.0.0.1", 0)
+        .bindSync(_ =>
+          HttpResponse(entity = CloseDelimited(ContentTypes.`application/octet-stream`, Source(List(first, second)))))
+        .awaitResult(timeout)
+      try {
+        val connection = Http().connectionTo("127.0.0.1").toPort(binding.localAddress.getPort).http()
+        // Keep the request side open so the server, not request-source completion, ends the connection.
+        val bodies = Source.single(HttpRequest()).concat(Source.maybe[HttpRequest])
+          .via(connection)
+          .mapAsync(1) { response =>
+            response.protocol shouldBe HttpProtocols.`HTTP/1.1`
+            response.status shouldBe StatusCodes.OK
+            response.entity shouldBe a[CloseDelimited]
+            response.entity.dataBytes.runFold(ByteString.empty)(_ ++ _)
+          }
+          .runWith(Sink.seq)
+        bodies.awaitResult(timeout) shouldBe Seq(first ++ second)
+      } finally binding.terminate(1.second).awaitResult(timeout)
+    }
+
     class CloseDelimitedTLSSetup {
       val source = TestPublisher.probe[ByteString]()
 
