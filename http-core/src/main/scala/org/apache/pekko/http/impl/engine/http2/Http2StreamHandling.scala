@@ -161,12 +161,14 @@ private[http2] trait Http2StreamHandling extends GraphStageLogic with LogHelper 
 
   /** Called by Http2ServerDemux when a stream comes in from the user-handler */
   def handleOutgoingCreated(outgoing: Http2SubStream): Unit = {
-    // a response to a HEAD request must not carry content (RFC 9110 section 9.3.2); the headers are sent unchanged
-    // so that the peer still learns the `content-length` it would have received for a GET
+    // A response to a HEAD request must not carry content (RFC 9110 section 9.3.2), but it can advertise the
+    // representation length a GET would have received (section 8.6).
     val stream =
-      if (headRequestStreamIds.remove(outgoing.streamId) && outgoing.hasEntity) {
-        outgoing.data.foreach(_.runWith(Sink.cancelled)(subFusingMaterializer))
-        outgoing.withoutData
+      if (headRequestStreamIds.remove(outgoing.streamId)) {
+        if (outgoing.hasEntity) {
+          outgoing.data.foreach(_.runWith(Sink.cancelled)(subFusingMaterializer))
+          outgoing.withoutData
+        } else omitUnspecifiedHeadContentLength(outgoing)
       } else outgoing
 
     stream.initialHeaders.priorityInfo.foreach(multiplexer.updatePriority)
@@ -185,6 +187,16 @@ private[http2] trait Http2StreamHandling extends GraphStageLogic with LogHelper 
       // stream was cancelled by peer before our response was ready
       stream.data.foreach(_.runWith(Sink.cancelled)(subFusingMaterializer))
 
+  }
+
+  private def omitUnspecifiedHeadContentLength(outgoing: Http2SubStream): Http2SubStream = {
+    val headers = outgoing.initialHeaders
+    val pairs = headers.keyValuePairs
+    // The default empty entity has no content type. A synthesized zero would describe that placeholder rather
+    // than the GET representation; an explicitly typed empty entity can still declare a real zero length.
+    val zeroIndex = pairs.indexWhere { case (name, value) => name == "content-length" && value == "0" }
+    if (zeroIndex < 0 || pairs.exists(_._1 == "content-type")) outgoing
+    else outgoing.copy(initialHeaders = headers.copy(keyValuePairs = pairs.patch(zeroIndex, Nil, 1)))
   }
 
   // Called by the outgoing stream multiplexer when that side of the stream is ended.

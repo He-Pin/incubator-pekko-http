@@ -690,8 +690,21 @@ class Http2ServerSpec extends Http2SpecWithMaterializer("""
         request.entity shouldBe HttpEntity.Empty
 
         user.emitResponse(TheStreamId, HttpResponse())
-        network.expectDecodedResponseHEADERSPairs(streamId = TheStreamId).toMap should contain(":status" -> "200")
+        val pairs = network.expectDecodedResponseHEADERSPairs(streamId = TheStreamId, endStream = true).toMap
+        pairs should contain(":status" -> "200")
+        pairs.keySet should not contain "content-length"
       })
+
+      "render a zero content-length for an explicitly typed empty representation".inAssertAllStagesStopped(
+        new HeadRequestSetup {
+          sendHeadRequest()
+          user.emitResponse(TheStreamId,
+            HttpResponse(entity = HttpEntity.empty(ContentTypes.`application/octet-stream`)))
+
+          val pairs = network.expectDecodedResponseHEADERSPairs(streamId = TheStreamId, endStream = true).toMap
+          pairs should contain("content-type" -> "application/octet-stream")
+          pairs should contain("content-length" -> "0")
+        })
 
       // RFC 9110 section 9.3.2: the server MUST NOT send content in a response to a HEAD request. The headers are
       // still rendered as they would be for a GET, so that the peer learns the size of the resource.
