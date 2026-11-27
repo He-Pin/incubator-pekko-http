@@ -28,3 +28,5 @@ Pekko HTTP 2.1.0 has not been released yet. These notes list the changes merged 
   `HttpCookie.partitioned` field instead of the generic `extension` field. If your code detects
   partitioned cookies by inspecting `extension` (`getExtension()` in Java), use `partitioned`
   (`partitioned()` in Java) instead ([PR1562](https://github.com/apache/pekko-http/pull/1562)).
+* Multipart unmarshallers now recognize the `boundary` parameter name in any ASCII letter case.
+  The boundary value remains case-sensitive.
