@@ -338,6 +338,11 @@ time: if the resolved time would be more than 50 years ahead, it uses the preced
 the two-digit year rule for `Set-Cookie` expiry dates. In its supported `Set-Cookie` expiry date formats, Apache Pekko
 HTTP accepts full English month names and abbreviations case-insensitively. This does not change other HTTP date parsing.
 
+When forwarding modeled `ETag`, `If-Match`, `If-None-Match`, and `If-Range` headers, Pekko HTTP preserves literal
+backslashes in valid opaque entity tags. An opaque tag is not a quoted string with escape sequences. Origin servers
+should still avoid generating tags with backslashes for compatibility with older recipients, as recommended in
+[RFC 9110, Section 8.8.3](https://www.rfc-editor.org/rfc/rfc9110.html#section-8.8.3).
+
 Some headers have special status in HTTP and are therefore treated differently from "regular" headers:
 
 Content-Type
