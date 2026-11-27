@@ -24,6 +24,9 @@ Pekko HTTP 2.1.0 has not been released yet. These notes list the changes merged 
 
 ### Behavior Changes
 
+* The `Accept`, `Accept-Charset`, `Accept-Encoding`, and `Accept-Language` headers now recognize an uppercase
+  `Q` parameter as a quality weight, just like lowercase `q`, as specified by [RFC 9110 §12.4.2](https://www.rfc-editor.org/rfc/rfc9110.html#section-12.4.2).
+
 * A bare `Partitioned` attribute in a parsed `Set-Cookie` header is now stored in the typed
   `HttpCookie.partitioned` field instead of the generic `extension` field. If your code detects
   partitioned cookies by inspecting `extension` (`getExtension()` in Java), use `partitioned`
