@@ -326,6 +326,10 @@ Java
 
 ## HTTP Headers
 
+A modeled `Content-Location` header can be sent in requests as well as responses. For example, a
+`PUT` request can use it to identify the source of its representation. It does not change the
+request target. See [RFC 9110, Section 8.7](https://www.rfc-editor.org/rfc/rfc9110.html#section-8.7).
+
 When the Apache Pekko HTTP server receives an HTTP request it tries to parse all its headers into their respective
 model classes. Independently of whether this succeeds or not, the HTTP layer will
 always pass on all received headers to the application. Unknown headers as well as ones with invalid syntax (according
