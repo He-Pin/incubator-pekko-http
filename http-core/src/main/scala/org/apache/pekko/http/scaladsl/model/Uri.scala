@@ -295,7 +295,8 @@ object Uri {
   def from(scheme: String = "", userinfo: String = "", host: String = "", port: Int = 0, path: String = "",
       queryString: Option[String] = None, fragment: Option[String] = None,
       mode: Uri.ParsingMode = Uri.ParsingMode.Relaxed): Uri =
-    apply(scheme, Authority(Host(host, UTF8, mode), normalizePort(port, scheme), userinfo), Path(path), queryString,
+    apply(scheme, Authority(Host(host, UTF8, mode), normalizePortForScheme(port, scheme), userinfo), Path(path),
+      queryString,
       fragment)
 
   /**
@@ -429,8 +430,10 @@ object Uri {
     def nonEmpty = !isEmpty
     def normalizedForHttp(encrypted: Boolean = false) =
       normalizedFor(httpScheme(encrypted))
+
+    /** Removes the default port for a recognized scheme, irrespective of the scheme's case. */
     def normalizedFor(scheme: String): Authority = {
-      val normalizedPort = normalizePort(port, scheme)
+      val normalizedPort = normalizePortForScheme(port, scheme)
       if (normalizedPort == port) this else copy(port = normalizedPort)
     }
     override def toString = UriRendering.AuthorityRenderer.render(new StringRendering, this).get
@@ -896,6 +899,12 @@ object Uri {
       case ix => fail(s"Invalid URI scheme, unexpected character at pos $ix ('${scheme.charAt(ix)}')")
     }
   }
+
+  // The string parser has already normalized the scheme; the component APIs can be given mixed-case schemes.
+  private def normalizePortForScheme(port: Int, scheme: String): Int =
+    if (port != 0 && scheme.exists(UPPER_ALPHA.apply))
+      normalizePort(port, scheme.map(pekko.http.impl.util.CharUtils.toLowerCase))
+    else normalizePort(port, scheme)
 
   private[http] def normalizePort(port: Int, scheme: String): Int =
     if ((port >> 16) == 0)
