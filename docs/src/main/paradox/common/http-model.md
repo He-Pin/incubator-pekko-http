@@ -280,20 +280,18 @@ Generally this behavior should be in line with your expectations.
 
 ### Special processing for HEAD requests
 
-[RFC 7230](https://tools.ietf.org/html/rfc7230#section-3.3.3) defines very clear rules for the entity length of HTTP messages.
+[RFC 9112, section 6.3](https://www.rfc-editor.org/rfc/rfc9112.html#section-6.3) specifies that a response
+to HEAD ends after the header section and has no message body, as do 1xx, 204, and 304 responses.
 
-Especially this rule requires special treatment in Apache Pekko HTTP:
+A HEAD response can advertise the length that the corresponding GET response would have had
+([RFC 9110, section 8.6](https://www.rfc-editor.org/rfc/rfc9110.html#section-8.6)). It can also indicate
+a transfer encoding. Pekko HTTP can represent a HEAD response with an empty data stream using
+`HttpEntity.Default` or `HttpEntity.Chunked`.
 
->
-Any response to a HEAD request and any response with a 1xx
-(Informational), 204 (No Content), or 304 (Not Modified) status
-code is always terminated by the first empty line after the
-header fields, regardless of the header fields present in the
-message, and thus cannot contain a message body.
-
-Responses to HEAD requests introduce the complexity that *Content-Length* or *Transfer-Encoding* headers
-can be present but the entity is empty. This is modeled by allowing @scala[*HttpEntity.Default*]@java[*HttpEntityDefault*] and @scala[*HttpEntity.Chunked*]@java[*HttpEntityChunked*]
-to be used for HEAD responses with an empty data stream.
+For an incoming HTTP/1.1 `200 OK` response to HEAD, a positive `Content-Length` is available through
+@scala[`entity.contentLengthOption`]@java[`entity.getContentLengthOption()`] without any body bytes.
+If that header is absent or explicitly zero, both cases produce an empty entity with length zero.
+An entity length of zero does not distinguish these two cases.
 
 Also, when a HEAD response has an @scala[*HttpEntity.CloseDelimited*]@java[*HttpEntityCloseDelimited*] entity the Apache Pekko HTTP implementation will *not* close the
 connection after the response has been sent. This allows the sending of HEAD responses without *Content-Length*
