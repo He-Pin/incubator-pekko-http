@@ -14,6 +14,7 @@
 package org.apache.pekko.http.impl.engine.http2
 
 import java.net.InetSocketAddress
+import java.util.concurrent.atomic.AtomicInteger
 
 import scala.concurrent.{ Future, Promise }
 import scala.concurrent.duration._
@@ -33,6 +34,7 @@ import pekko.http.scaladsl.model.{
   HttpHeader,
   HttpMethod,
   HttpMethods,
+  HttpProtocols,
   HttpRequest,
   HttpResponse,
   RequestResponseAssociation,
@@ -104,6 +106,39 @@ abstract class Http2PersistentClientSpec(tls: Boolean) extends PekkoSpecWithMate
         Unmarshal(response.entity).to[String].futureValue shouldBe "pong"
         response.attribute(requestIdAttr).get.id shouldBe "request-1"
       })
+
+    if (!tls)
+      "return a 421 response without replaying the request" in {
+        val setup = new TestSetup(tls)
+        import setup._
+        StreamTestKit.assertAllStagesStopped {
+          val binding = server.binding
+          try {
+            val body = "application declined this request"
+            val id = RequestId("misdirected")
+            client.responsesIn.request(2)
+            client.sendRequest(HttpRequest(uri = "/misdirected").addAttribute(requestIdAttr, id))
+
+            val received = server.expectRequest()
+            received.request.method shouldBe HttpMethods.GET
+            received.request.protocol shouldBe HttpProtocols.`HTTP/2.0`
+            received.request.uri.path shouldBe Uri.Path("/misdirected")
+            server.sendResponseFor(received, HttpResponse(StatusCodes.MisdirectedRequest, entity = body))
+
+            val response = client.responsesIn.expectNext()
+            response.status shouldBe StatusCodes.MisdirectedRequest
+            response.protocol shouldBe HttpProtocols.`HTTP/2.0`
+            response.attribute(requestIdAttr) shouldBe Some(id)
+            Unmarshal(response.entity).to[String].futureValue shouldBe body
+            client.requestsOut.sendComplete()
+            client.responsesIn.expectComplete()
+          } finally {
+            client.responsesIn.cancel()
+            binding.terminate(100.millis).futureValue
+          }
+        }
+        server.requestCount shouldBe 1
+      }
 
     "retire an aged connection after in-flight requests complete".inAssertAllStagesStopped(new TestSetup(tls) {
       override def clientSettings: ClientConnectionSettings =
@@ -465,9 +500,11 @@ abstract class Http2PersistentClientSpec(tls: Boolean) extends PekkoSpecWithMate
       killProbe.expectMsgType[UniqueKillSwitch].abort(new StreamTcpException("connection was killed"))
 
     object server {
+      private val receivedRequests = new AtomicInteger
       private lazy val requestProbe = TestProbe()
       private lazy val handler: HttpRequest => Future[HttpResponse] = { req =>
         val p = Promise[HttpResponse]()
+        receivedRequests.incrementAndGet()
         requestProbe.ref ! ServerRequest(req, p)
         p.future
       }
@@ -480,6 +517,7 @@ abstract class Http2PersistentClientSpec(tls: Boolean) extends PekkoSpecWithMate
          else builder).bind(handler).futureValue
       }
 
+      def requestCount: Int = receivedRequests.get()
       def expectRequest(): ServerRequest = requestProbe.expectMsgType[ServerRequest]
       def expectNoRequest(duration: FiniteDuration): Unit = requestProbe.expectNoMessage(duration)
       def sendResponseFor(request: ServerRequest, response: HttpResponse): Unit =

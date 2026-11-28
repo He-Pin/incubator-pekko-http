@@ -186,7 +186,7 @@ object StatusCodes extends ObjectRegistry[Int, StatusCode] {
   val ExpectationFailed            = reg(c(417)("Expectation Failed", "The server cannot meet the requirements of the Expect request-header field."))
   val ImATeapot                    = reg(c(418)("I'm a teapot", "The resulting entity body MAY be short and stout."))
   val EnhanceYourCalm              = reg(c(420)("Enhance Your Calm", "You are being rate-limited.")) // Twitter only
-  val MisdirectedRequest           = reg(c(421)("Misdirected Request", "The request was directed at a server that is not able to produce a response.")) // HTTP/2 only. https://tools.ietf.org/html/rfc7540#section-9.1.2
+  val MisdirectedRequest           = reg(c(421)("Misdirected Request", "The request was directed at a server that is not able to produce a response.")) // https://www.rfc-editor.org/rfc/rfc9110.html#section-15.5.20
   val UnprocessableContent         = reg(c(422)("Unprocessable Content", "The request was well-formed but was unable to be followed due to semantic errors."))
   @deprecated("deprecated in favor of UnprocessableContent", "1.1.0")
   val UnprocessableEntity          = UnprocessableContent

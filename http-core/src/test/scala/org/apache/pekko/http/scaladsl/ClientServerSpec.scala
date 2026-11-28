@@ -124,6 +124,34 @@ class ClientServerSpec extends ClientServerSpecBase(http2 = false) {
       } finally binding.terminate(1.second.dilated).awaitResult(timeout)
     }
 
+    "deliver a pooled HTTP/1.1 421 without replaying the request" in Utils.assertAllStagesStopped {
+      val host = "127.0.0.1"
+      val timeout = 3.seconds.dilated
+      val dispatches = new AtomicLong()
+      val binding = Http().newServerAt(host, 0).bindSync { request =>
+        val ordinal = dispatches.incrementAndGet()
+        HttpResponse(StatusCodes.MisdirectedRequest,
+          entity = s"${request.method.value} ${request.uri.path}: dispatch $ordinal")
+      }.awaitResult(timeout)
+      try {
+        val settings = ConnectionPoolSettings(system).withMaxConnections(1).withMaxRetries(2)
+        val (pool, responses) = Source.single(HttpRequest(GET, "/pooled-421") -> 0)
+          .viaMat(Http().cachedHostConnectionPool[Int](host, binding.localAddress.getPort, settings))(Keep.right)
+          .mapAsync(1) { case (result, _) =>
+            val response = result.get
+            response.entity.dataBytes.utf8String.map(body => (response.protocol, response.status, body))
+          }
+          .toMat(Sink.seq)(Keep.both)
+          .run()
+        val received = try responses.awaitResult(timeout)
+        finally pool.shutdown().awaitResult(timeout)
+
+        received shouldEqual
+        Seq((HttpProtocols.`HTTP/1.1`, StatusCodes.MisdirectedRequest, "GET /pooled-421: dispatch 1"))
+        dispatches.get() shouldEqual 1L
+      } finally binding.terminate(1.second.dilated).awaitResult(timeout)
+    }
+
     "preserve a declared trailer in an HTTP/1.1 response without body data" in Utils.assertAllStagesStopped {
       // This application test field permits a report result in the trailer section.
       val terminal = LastChunk(trailer = List(headers.RawHeader("X-Report-Result", "ready")))
